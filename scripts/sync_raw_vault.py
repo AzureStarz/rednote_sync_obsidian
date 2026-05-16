@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ def build_rsync_command(
     local_vault: str,
     owner: str | None = None,
     ssh_port: int | None = None,
+    ssh_key: str | None = None,
     dry_run: bool = False,
     prune: bool = False,
     verbose: bool = False,
@@ -44,22 +46,40 @@ def build_rsync_command(
         "-az",
         "--partial",
         "--human-readable",
+        "--stats",
         "--exclude",
         ".tmp/",
         "--exclude",
         "*/.tmp/",
     ]
     if verbose:
-        cmd.append("--info=stats2,progress2")
-    else:
-        cmd.append("--info=stats1")
+        cmd.append("--progress")
     if dry_run:
         cmd.append("--dry-run")
     if prune:
         cmd.append("--delete")
-    if ssh_port:
-        cmd.extend(["-e", f"ssh -p {ssh_port}"])
+    ssh_transport = build_rsync_ssh_transport(ssh_port=ssh_port, ssh_key=ssh_key)
+    if ssh_transport:
+        cmd.extend(["-e", ssh_transport])
     cmd.extend([remote, local])
+    return cmd
+
+
+def build_rsync_ssh_transport(*, ssh_port: int | None = None, ssh_key: str | None = None) -> str:
+    parts = ["ssh"]
+    if ssh_port:
+        parts.extend(["-p", str(ssh_port)])
+    if ssh_key:
+        parts.extend(["-i", shlex.quote(str(Path(ssh_key).expanduser())), "-o", "IdentitiesOnly=yes"])
+    return " ".join(parts) if len(parts) > 1 else ""
+
+
+def build_ssh_command_prefix(*, ssh_port: int | None = None, ssh_key: str | None = None) -> list[str]:
+    cmd = ["ssh"]
+    if ssh_port:
+        cmd.extend(["-p", str(ssh_port)])
+    if ssh_key:
+        cmd.extend(["-i", str(Path(ssh_key).expanduser()), "-o", "IdentitiesOnly=yes"])
     return cmd
 
 
@@ -208,12 +228,11 @@ def build_remote_prune_command(
     days: int,
     owner: str | None = None,
     ssh_port: int | None = None,
+    ssh_key: str | None = None,
     dry_run: bool = False,
     remote_sudo: bool = False,
 ) -> list[str]:
-    cmd = ["ssh"]
-    if ssh_port:
-        cmd.extend(["-p", str(ssh_port)])
+    cmd = build_ssh_command_prefix(ssh_port=ssh_port, ssh_key=ssh_key)
     cmd.append(server)
     if remote_sudo:
         cmd.append("sudo")
@@ -230,6 +249,7 @@ def run_remote_prune(
     days: int,
     owner: str | None = None,
     ssh_port: int | None = None,
+    ssh_key: str | None = None,
     dry_run: bool = False,
     remote_sudo: bool = False,
 ) -> int:
@@ -239,10 +259,26 @@ def run_remote_prune(
         days=days,
         owner=owner,
         ssh_port=ssh_port,
+        ssh_key=ssh_key,
         dry_run=dry_run,
         remote_sudo=remote_sudo,
     )
     result = subprocess.run(cmd, input=REMOTE_PRUNE_SCRIPT, text=True, check=False)
+    return result.returncode
+
+
+def build_remote_rsync_check_command(*, server: str, ssh_port: int | None = None, ssh_key: str | None = None) -> list[str]:
+    cmd = build_ssh_command_prefix(ssh_port=ssh_port, ssh_key=ssh_key)
+    cmd.append(server)
+    cmd.append("command -v rsync >/dev/null 2>&1")
+    return cmd
+
+
+def check_remote_rsync(*, server: str, ssh_port: int | None = None, ssh_key: str | None = None) -> int:
+    result = subprocess.run(
+        build_remote_rsync_check_command(server=server, ssh_port=ssh_port, ssh_key=ssh_key),
+        check=False,
+    )
     return result.returncode
 
 
@@ -263,6 +299,7 @@ def parse_args() -> argparse.Namespace:
         help="Local permanent Obsidian raw vault directory",
     )
     parser.add_argument("--ssh-port", type=int, default=None, help="Optional SSH port")
+    parser.add_argument("--ssh-key", default=None, help="Optional SSH private key or .pem path")
     parser.add_argument("--dry-run", action="store_true", help="Show planned sync/prune without writing or deleting files")
     parser.add_argument(
         "--prune",
@@ -296,12 +333,22 @@ def main() -> int:
     if args.prune:
         print("WARNING: --prune deletes local files missing on the server; this is usually wrong for a permanent local vault.", file=sys.stderr)
 
+    remote_check = check_remote_rsync(server=args.server, ssh_port=args.ssh_port, ssh_key=args.ssh_key)
+    if remote_check != 0:
+        print(
+            "Remote server does not have rsync installed or is not reachable. "
+            f"Install it first, for example: ssh {args.server!r} 'apt-get update && apt-get install -y rsync'",
+            file=sys.stderr,
+        )
+        return remote_check
+
     cmd = build_rsync_command(
         server=args.server,
         remote_root=args.remote_root,
         local_vault=str(local_vault),
         owner=owner,
         ssh_port=args.ssh_port,
+        ssh_key=args.ssh_key,
         dry_run=args.dry_run,
         prune=args.prune,
         verbose=args.verbose,
@@ -337,6 +384,7 @@ def main() -> int:
             days=args.remote_cache_days,
             owner=owner,
             ssh_port=args.ssh_port,
+            ssh_key=args.ssh_key,
             dry_run=args.dry_run,
             remote_sudo=args.remote_prune_sudo,
         )

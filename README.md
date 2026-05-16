@@ -389,6 +389,63 @@ Optional macOS cron example, every 10 minutes:
 */10 * * * * cd /path/to/rednote_sync_obsidian && .venv/bin/python scripts/sync_raw_vault.py --server user@your-server --remote-root /opt/rednote_sync_obsidian/data/rednote_raw --owner hongbin --local-vault ~/Documents/raw_rednote_post_vault --remote-cache-days 30
 ```
 
+## Passwordless SSH and one-command sync
+
+You already have this SSH host configured locally:
+
+```sshconfig
+Host Aliyun_Simple_Application_Server
+  HostName 120.24.177.252
+  Port 22
+  User root
+  IdentityFile /Users/zhanghongbin12/mt_mac.pem
+```
+
+So you do **not** need `ssh-copy-id`. Test it directly:
+
+```bash
+ssh Aliyun_Simple_Application_Server 'echo ok'
+```
+
+If SSH complains about key permissions, fix the pem once:
+
+```bash
+chmod 400 /Users/zhanghongbin12/mt_mac.pem
+```
+
+### One-command sync
+
+Create local sync config in the repo. This file is ignored by git:
+
+```bash
+cat > .env.sync <<'EOF'
+REDNOTE_SYNC_SERVER=Aliyun_Simple_Application_Server
+REDNOTE_REMOTE_ROOT=/opt/rednote_sync_obsidian/data/rednote_raw
+REDNOTE_LOCAL_VAULT=$HOME/Documents/raw_rednote_post_vault
+REDNOTE_REMOTE_CACHE_DAYS=30
+EOF
+```
+
+Run directly:
+
+```bash
+./scripts/sync_local_vault.sh hongbin
+```
+
+Or install aliases:
+
+```bash
+./scripts/setup_sync_alias.sh
+source ~/.zshrc
+sync-rednote-hongbin
+```
+
+For Zhangyu, use:
+
+```bash
+./scripts/sync_local_vault.sh zhangyu
+```
+
 ## Operations
 
 Check services:

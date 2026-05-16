@@ -1,7 +1,13 @@
 import hashlib
 import json
 
-from scripts.sync_raw_vault import build_remote_prune_command, build_rsync_command, owner_remote_root, verify_local_vault
+from scripts.sync_raw_vault import (
+    build_remote_prune_command,
+    build_remote_rsync_check_command,
+    build_rsync_command,
+    owner_remote_root,
+    verify_local_vault,
+)
 
 
 def test_build_rsync_command_defaults_to_non_destructive_sync():
@@ -33,7 +39,8 @@ def test_build_rsync_command_supports_dry_run_prune_and_port():
     assert "--dry-run" in cmd
     assert "--delete" in cmd
     assert ["-e", "ssh -p 2222"] == cmd[cmd.index("-e") : cmd.index("-e") + 2]
-    assert "--info=stats2,progress2" in cmd
+    assert "--stats" in cmd
+    assert "--progress" in cmd
 
 
 def test_build_remote_prune_command_can_target_one_owner():
@@ -45,6 +52,20 @@ def test_build_remote_prune_command_can_target_one_owner():
     )
 
     assert "/data/rednote_raw/users/zhangyu" in cmd
+
+
+def test_build_remote_rsync_check_command_uses_configured_ssh():
+    cmd = build_remote_rsync_check_command(
+        server="root@example.com",
+        ssh_port=2222,
+        ssh_key="~/Downloads/rednote.pem",
+    )
+
+    assert cmd[:2] == ["ssh", "-p"]
+    assert "2222" in cmd
+    assert "-i" in cmd
+    assert cmd[-2] == "root@example.com"
+    assert cmd[-1] == "command -v rsync >/dev/null 2>&1"
 
 
 def test_build_rsync_command_can_sync_one_owner():
@@ -126,6 +147,34 @@ def test_build_remote_prune_command_uses_ssh_and_dry_run():
     assert "30" in cmd
     assert "--dry-run" in cmd
 
+
+
+def test_build_rsync_command_supports_pem_key():
+    cmd = build_rsync_command(
+        server="root@example.com",
+        remote_root="/data/rednote_raw",
+        local_vault="/tmp/raw",
+        ssh_key="~/Downloads/rednote.pem",
+    )
+
+    transport = cmd[cmd.index("-e") + 1]
+    assert "ssh" in transport
+    assert "-i" in transport
+    assert "rednote.pem" in transport
+    assert "IdentitiesOnly=yes" in transport
+
+
+def test_build_remote_prune_command_supports_pem_key():
+    cmd = build_remote_prune_command(
+        server="root@example.com",
+        remote_root="/data/rednote_raw",
+        days=30,
+        ssh_key="~/Downloads/rednote.pem",
+    )
+
+    assert cmd[:2] == ["ssh", "-i"]
+    assert cmd[2].endswith("/Downloads/rednote.pem")
+    assert "IdentitiesOnly=yes" in cmd
 
 def test_owner_remote_root_rejects_path_traversal():
     assert owner_remote_root("/data/rednote_raw", "zhangyu") == "/data/rednote_raw/users/zhangyu"
