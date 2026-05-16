@@ -9,7 +9,7 @@ from .config import Settings, get_settings
 from .jobs import build_job, serialize_job
 from .models import CaptureRequest
 from .queue import create_redis_client, enqueue_job
-from .security import build_dedupe_key, is_authorized
+from .security import build_dedupe_key, resolve_capture_user
 
 
 def create_app(settings: Settings | None = None, redis_client: Any | None = None) -> FastAPI:
@@ -47,11 +47,20 @@ def create_app(settings: Settings | None = None, redis_client: Any | None = None
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-        if not is_authorized(x_capture_token, settings_obj.capture_token):
+        try:
+            capture_user = resolve_capture_user(
+                x_capture_token,
+                users_file=settings_obj.capture_users_file,
+                fallback_token=settings_obj.capture_token,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        if capture_user is None:
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         try:
-            job = build_job(payload, settings_obj)
+            job = build_job(payload, settings_obj, owner=capture_user)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

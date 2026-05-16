@@ -57,6 +57,8 @@ def test_process_job_writes_raw_bundle(monkeypatch, tmp_path):
     settings = Settings(redis_url="redis://test", raw_storage_root=str(tmp_path), crawl_cookie="cookie")
     job = {
         "job_id": "xhs_abc123",
+        "owner_id": "hongbin",
+        "owner_display_name": "Hongbin",
         "platform": "xiaohongshu",
         "url": "https://www.xiaohongshu.com/explore/abc",
         "share_text": "share",
@@ -67,14 +69,16 @@ def test_process_job_writes_raw_bundle(monkeypatch, tmp_path):
     }
 
     bundle_path = worker.process_job(job, settings=settings, storage=RawBundleStorage(tmp_path))
-    manifest = json.loads((tmp_path / "posts/2026/05/16/xhs_abc123/manifest.json").read_text())
-    headers = json.loads((tmp_path / "posts/2026/05/16/xhs_abc123/response_headers.json").read_text())
+    bundle = tmp_path / "users/hongbin/posts/2026/05/16/xhs_abc123"
+    manifest = json.loads((bundle / "manifest.json").read_text())
+    headers = json.loads((bundle / "response_headers.json").read_text())
 
-    assert bundle_path.endswith("posts/2026/05/16/xhs_abc123")
-    assert (tmp_path / "posts/2026/05/16/xhs_abc123/source.html").read_bytes() == html
-    assert (tmp_path / "posts/2026/05/16/xhs_abc123/images/001.jpg").read_bytes() == b"fake-image"
-    assert (tmp_path / "posts/2026/05/16/xhs_abc123/videos/001.mp4").read_bytes() == b"fake-video"
-    assert (tmp_path / "posts/2026/05/16/xhs_abc123/index.md").exists()
+    assert bundle_path.endswith("users/hongbin/posts/2026/05/16/xhs_abc123")
+    assert (bundle / "source.html").read_bytes() == html
+    assert (bundle / "images/001.jpg").read_bytes() == b"fake-image"
+    assert (bundle / "videos/001.mp4").read_bytes() == b"fake-video"
+    assert (bundle / "index.md").exists()
+    assert manifest["owner_id"] == "hongbin"
     assert manifest["status"] == "complete"
     assert manifest["page"]["title"] == "Raw Title"
     assert manifest["images"][0]["sha256"]

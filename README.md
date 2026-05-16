@@ -20,7 +20,7 @@ No LLM summary is executed in the worker, and GitHub is no longer the storage ta
 ## What is implemented
 
 - FastAPI API: `POST /capture`, `GET /health`
-- Token authentication via `X-Capture-Token`
+- Token authentication via `X-Capture-Token`, with optional multi-user token routing
 - Redis async queue + dedupe window
 - Raw page fetch with optional server-side `CRAWL_COOKIE`
 - Original `source.html` storage for every processed bundle
@@ -30,7 +30,7 @@ No LLM summary is executed in the worker, and GitHub is no longer the storage ta
 - Attached screenshot preservation when `screenshot_b64` is provided
 - Per-capture `manifest.json`, `request.json`, `response_headers.json`, `extraction_report.json`, and Obsidian-readable `index.md`
 - Server-local raw storage volume in Docker Compose
-- `scripts/sync_raw_vault.py` wrapper around SSH/rsync for local Obsidian sync
+- `scripts/sync_raw_vault.py` wrapper around SSH/rsync for per-user local Obsidian sync
 - Optional legacy LLM/GitHub modules retained for future offline/processed-note workflows, but not required by the worker
 
 ## Repository layout
@@ -78,11 +78,46 @@ openssl rand -hex 32
 Minimum server configuration:
 
 ```bash
-CAPTURE_TOKEN=<random token>
 REDIS_URL=redis://redis:6379/0
 RAW_STORAGE_ROOT=/data/rednote_raw
 RAW_STORAGE_HOST_PATH=./data/rednote_raw
 ```
+
+Single-user mode can use:
+
+```bash
+CAPTURE_TOKEN=<random token>
+```
+
+For Hongbin/Zhangyu isolation, prefer multi-user mode:
+
+```bash
+mkdir -p /opt/rednote_sync_obsidian/secrets
+chmod 700 /opt/rednote_sync_obsidian/secrets
+openssl rand -hex 32
+openssl rand -hex 32
+cat > /opt/rednote_sync_obsidian/secrets/capture_users.json <<'JSON'
+{
+  "hongbin": {
+    "display_name": "Hongbin",
+    "token": "replace_with_first_random_token"
+  },
+  "zhangyu": {
+    "display_name": "Zhangyu",
+    "token": "replace_with_second_random_token"
+  }
+}
+JSON
+chmod 600 /opt/rednote_sync_obsidian/secrets/capture_users.json
+```
+
+Then set:
+
+```bash
+CAPTURE_USERS_FILE=/opt/rednote_sync_obsidian/secrets/capture_users.json
+```
+
+When `CAPTURE_USERS_FILE` is set, it takes precedence over `CAPTURE_TOKEN`. The request body never includes the user id; the server derives `owner_id` from the token.
 
 Optional but recommended for logged-in Rednote pages:
 
@@ -120,23 +155,28 @@ Each capture writes an immutable-style bundle under `RAW_STORAGE_ROOT` inside th
 
 ```text
 /data/rednote_raw/
-  posts/
-    2026/
-      05/
-        16/
-          xhs_abcd1234/
-            index.md
-            manifest.json
-            source.html
-            request.json
-            response_headers.json
-            extraction_report.json
-            images/
-              screenshot.jpg
-              001.jpg
-              002.webp
-            videos/
-              001.mp4
+  users/
+    hongbin/
+      posts/
+        2026/
+          05/
+            16/
+              xhs_abcd1234/
+                index.md
+                manifest.json
+                source.html
+                request.json
+                response_headers.json
+                extraction_report.json
+                images/
+                  screenshot.jpg
+                  001.jpg
+                  002.webp
+                videos/
+                  001.mp4
+    zhangyu/
+      posts/
+        ...
 ```
 
 Important files:
@@ -243,7 +283,7 @@ Actions:
    - Method: `POST`
    - Headers:
      - `Content-Type: application/json`
-     - `X-Capture-Token: <CAPTURE_TOKEN>`
+     - `X-Capture-Token: <personal token from capture_users.json or CAPTURE_TOKEN>`
    - Request Body: JSON dictionary
 6. Show notification: `已入队` plus returned `job_id`.
 
@@ -269,10 +309,10 @@ RAW_STORAGE_ROOT=/data/rednote_raw
 RAW_STORAGE_HOST_PATH=./data/rednote_raw
 ```
 
-If your project is deployed at `/opt/rednote-sync-obsidian`, the host-visible path for SSH/rsync is usually:
+If your project is deployed at `/opt/rednote_sync_obsidian`, the host-visible path for SSH/rsync is usually:
 
 ```text
-/opt/rednote-sync-obsidian/data/rednote_raw
+/opt/rednote_sync_obsidian/data/rednote_raw
 ```
 
 If you prefer an absolute host directory, set:
@@ -290,7 +330,8 @@ Install/use `rsync` and SSH access from your Mac to the server, then run:
 ```bash
 python scripts/sync_raw_vault.py \
   --server user@your-server \
-  --remote-root /opt/rednote-sync-obsidian/data/rednote_raw \
+  --remote-root /opt/rednote_sync_obsidian/data/rednote_raw \
+  --owner hongbin \
   --local-vault ~/Documents/raw_rednote_post_vault \
   --dry-run
 ```
@@ -300,9 +341,12 @@ python scripts/sync_raw_vault.py \
 ```bash
 python scripts/sync_raw_vault.py \
   --server user@your-server \
-  --remote-root /opt/rednote-sync-obsidian/data/rednote_raw \
+  --remote-root /opt/rednote_sync_obsidian/data/rednote_raw \
+  --owner hongbin \
   --local-vault ~/Documents/raw_rednote_post_vault
 ```
+
+For Zhangyu, use `--owner zhangyu` and a separate local vault path if desired.
 
 The script verifies local bundle hashes from `manifest.json` after rsync. If verification fails, it exits non-zero.
 
@@ -313,7 +357,8 @@ After you trust the dry-run, use:
 ```bash
 python scripts/sync_raw_vault.py \
   --server user@your-server \
-  --remote-root /opt/rednote-sync-obsidian/data/rednote_raw \
+  --remote-root /opt/rednote_sync_obsidian/data/rednote_raw \
+  --owner hongbin \
   --local-vault ~/Documents/raw_rednote_post_vault \
   --remote-cache-days 30
 ```
@@ -341,7 +386,7 @@ Open folder as vault -> ~/Documents/raw_rednote_post_vault
 Optional macOS cron example, every 10 minutes:
 
 ```bash
-*/10 * * * * cd /path/to/rednote_sync_obsidian && .venv/bin/python scripts/sync_raw_vault.py --server user@your-server --remote-root /opt/rednote-sync-obsidian/data/rednote_raw --local-vault ~/Documents/raw_rednote_post_vault --remote-cache-days 30
+*/10 * * * * cd /path/to/rednote_sync_obsidian && .venv/bin/python scripts/sync_raw_vault.py --server user@your-server --remote-root /opt/rednote_sync_obsidian/data/rednote_raw --owner hongbin --local-vault ~/Documents/raw_rednote_post_vault --remote-cache-days 30
 ```
 
 ## Operations
@@ -383,14 +428,66 @@ Check server cache usage:
 
 ```bash
 du -sh ./data/rednote_raw
-find ./data/rednote_raw/posts -type f | wc -l
+find ./data/rednote_raw/users/hongbin/posts -type f | wc -l
+find ./data/rednote_raw/users/zhangyu/posts -type f | wc -l
 ```
 
 Recommended maintenance:
 
-- Treat `~/Documents/raw_rednote_post_vault` on your Mac as the permanent copy.
+- Treat each user's local `raw_rednote_post_vault` as that user's permanent copy.
 - Back up the local vault with Time Machine or another local backup if the data is important.
 - Keep server cache deletion tied to successful Mac sync via `--remote-cache-days 30`; do not delete independently on the server.
 - Monitor disk usage.
-- Rotate `CAPTURE_TOKEN` and `CRAWL_COOKIE` periodically.
+- Rotate per-user tokens in `capture_users.json` and rotate `CRAWL_COOKIE` periodically.
 - Keep raw capture and processed/LLM summaries as separate stages.
+
+## iOS Shortcut generator
+
+Generate a Shortcut file that POSTs Rednote text/URL to `/capture`. The default mode is clipboard-based because Xiaohongshu may not expose the iOS system Share Sheet: tap Copy Link in Xiaohongshu, then run the Shortcut from the Shortcuts app, Home Screen, Siri, Back Tap, or widget.
+
+Temporary HTTP endpoint before ICP approval. Run this on the Mac/local repo with a local ignored copy of `secrets/capture_users.json` containing the same tokens as the server file:
+
+```bash
+python scripts/make_ios_shortcut.py \
+  --endpoint http://120.24.177.252:8080/capture \
+  --users-file secrets/capture_users.json \
+  --user hongbin \
+  --name 保存小红书原始帖子-Hongbin \
+  --input-source clipboard
+```
+
+Zhangyu's shortcut:
+
+```bash
+python scripts/make_ios_shortcut.py \
+  --endpoint http://120.24.177.252:8080/capture \
+  --users-file secrets/capture_users.json \
+  --user zhangyu \
+  --name 保存小红书原始帖子-Zhangyu \
+  --input-source clipboard
+```
+
+Production endpoint after ICP approval:
+
+```bash
+python scripts/make_ios_shortcut.py \
+  --endpoint https://capture.hbzhang.top/capture \
+  --users-file secrets/capture_users.json \
+  --user hongbin \
+  --name 保存小红书原始帖子-Hongbin \
+  --input-source clipboard
+```
+
+If another app exposes the iOS system Share Sheet and you want to use Share Sheet input instead of the clipboard, pass `--input-source share-sheet`.
+
+The script reads the selected user's token from `--users-file`/`--user`, or falls back to `CAPTURE_TOKEN` when not using multi-user mode. It embeds that token into the generated Shortcut, so output defaults to ignored local storage under `data/shortcuts/`.
+
+If macOS signing succeeds, open the printed `.shortcut` file on iPhone or AirDrop it to the phone and add it to Shortcuts. If signing times out, the script prints an unsigned `.shortcut`; create the shortcut manually or retry signing later with:
+
+```bash
+shortcuts sign --mode anyone \
+  --input data/shortcuts/保存小红书原始帖子.unsigned.shortcut \
+  --output data/shortcuts/保存小红书原始帖子.shortcut
+```
+
+Do not commit generated `.shortcut` files because they contain a capture token.

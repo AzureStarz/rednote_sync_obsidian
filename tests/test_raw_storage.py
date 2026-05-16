@@ -12,7 +12,7 @@ def test_raw_bundle_storage_commits_atomically(tmp_path):
     assert (final_dir / "source.html").read_bytes() == b"<html></html>"
     assert stored.bytes == len(b"<html></html>")
     assert len(stored.sha256) == 64
-    assert final_dir.relative_to(tmp_path).as_posix() == "posts/2026/05/16/xhs_abc123"
+    assert final_dir.relative_to(tmp_path).as_posix() == "users/default/posts/2026/05/16/xhs_abc123"
 
 
 def test_redact_headers_removes_cookies():
@@ -23,7 +23,7 @@ def test_redact_headers_removes_cookies():
 
 
 def test_build_raw_index_markdown_links_raw_files():
-    job = {"job_id": "xhs_abc", "captured_at": "2026-05-16T00:00:00+00:00", "share_text": "分享文本"}
+    job = {"job_id": "xhs_abc", "owner_id": "hongbin", "captured_at": "2026-05-16T00:00:00+00:00", "share_text": "分享文本"}
     manifest = {
         "schema_version": 2,
         "status": "complete",
@@ -38,6 +38,7 @@ def test_build_raw_index_markdown_links_raw_files():
     md = build_raw_index_markdown(job, manifest)
 
     assert "# 标题" in md
+    assert 'owner_id: "hongbin"' in md
     assert "[[source.html]]" in md
     assert "![[images/001.jpg]]" in md
     assert "![[videos/001.mp4]]" in md

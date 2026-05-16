@@ -9,6 +9,7 @@ from typing import Any
 
 from .config import Settings
 from .models import CaptureRequest
+from .security import CaptureUser
 
 
 def utc_now_iso() -> str:
@@ -42,7 +43,7 @@ def clean_base64_image(value: str, max_bytes: int) -> tuple[str, bytes]:
     return raw, image_bytes
 
 
-def build_job(payload: CaptureRequest, settings: Settings) -> dict[str, Any]:
+def build_job(payload: CaptureRequest, settings: Settings, owner: CaptureUser | None = None) -> dict[str, Any]:
     share_text = payload.share_text
     user_note = payload.user_note
 
@@ -62,6 +63,8 @@ def build_job(payload: CaptureRequest, settings: Settings) -> dict[str, Any]:
     job_id = "xhs_" + uuid.uuid4().hex[:12]
     job = {
         "job_id": job_id,
+        "owner_id": owner.owner_id if owner else "default",
+        "owner_display_name": owner.display_name if owner else "Default",
         "platform": payload.platform or "xiaohongshu",
         "url": payload.url,
         "share_text": share_text,

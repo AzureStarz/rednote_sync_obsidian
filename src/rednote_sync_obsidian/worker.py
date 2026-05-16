@@ -65,6 +65,8 @@ def _write_error_bundle(job: dict[str, Any], *, settings: Settings, storage: Raw
         manifest = {
             "schema_version": 2,
             "job_id": job.get("job_id"),
+            "owner_id": job.get("owner_id") or "default",
+            "owner_display_name": job.get("owner_display_name") or "Default",
             "platform": job.get("platform"),
             "status": "failed",
             "source_url": job.get("url"),
@@ -270,6 +272,8 @@ def process_job(job: dict[str, Any], *, settings: Settings, storage: RawBundleSt
         manifest: dict[str, Any] = {
             "schema_version": 2,
             "job_id": job.get("job_id"),
+            "owner_id": job.get("owner_id") or "default",
+            "owner_display_name": job.get("owner_display_name") or "Default",
             "platform": job.get("platform"),
             "status": status,
             "source_url": job.get("url"),

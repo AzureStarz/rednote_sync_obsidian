@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from .security import validate_owner_id
+
 INVALID_FILENAME_RE = re.compile(r"[/\\:*?\"<>|\x00-\x1f]")
 
 
@@ -119,7 +121,8 @@ class RawBundleStorage:
     def final_dir_for_job(self, job: dict[str, Any]) -> Path:
         year, month, day = captured_date_parts(job.get("captured_at"))
         job_id = sanitize_filename_part(str(job.get("job_id") or "xhs"), fallback="xhs")
-        return self.root / "posts" / year / month / day / job_id
+        owner_id = validate_owner_id(str(job.get("owner_id") or "default"))
+        return self.root / "users" / owner_id / "posts" / year / month / day / job_id
 
     def cleanup_staging_dir(self, staging: Path) -> None:
         try:
@@ -160,6 +163,8 @@ class RawBundleStorage:
 def build_capture_request_record(job: dict[str, Any], *, has_crawl_cookie: bool) -> dict[str, Any]:
     return {
         "job_id": job.get("job_id"),
+        "owner_id": job.get("owner_id") or "default",
+        "owner_display_name": job.get("owner_display_name") or "Default",
         "platform": job.get("platform"),
         "url": job.get("url"),
         "share_text": job.get("share_text"),
@@ -210,6 +215,7 @@ source: "xiaohongshu"
 capture_type: "raw"
 status: "{status}"
 job_id: {yaml_string(job.get("job_id", ""))}
+owner_id: {yaml_string(job.get("owner_id", "default"))}
 url: {yaml_string(source_url)}
 final_url: {yaml_string(final_url)}
 captured_at: {yaml_string(job.get("captured_at", ""))}

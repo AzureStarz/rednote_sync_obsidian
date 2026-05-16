@@ -5,7 +5,7 @@ import pytest
 from rednote_sync_obsidian.config import Settings
 from rednote_sync_obsidian.jobs import build_job, clean_base64_image
 from rednote_sync_obsidian.models import CaptureRequest
-from rednote_sync_obsidian.security import build_dedupe_key
+from rednote_sync_obsidian.security import CaptureUser, build_dedupe_key
 
 
 def test_clean_base64_image_accepts_data_url():
@@ -33,3 +33,22 @@ def test_dedupe_key_is_stable_for_same_content():
     job2 = dict(job1)
     job2["job_id"] = "xhs_other"
     assert build_dedupe_key(job1) == build_dedupe_key(job2)
+
+
+def test_build_job_records_owner_without_token():
+    settings = Settings()
+    owner = CaptureUser(owner_id="hongbin", display_name="Hongbin", token="secret-token")
+    job = build_job(CaptureRequest(url="https://example.com/a"), settings, owner=owner)
+
+    assert job["owner_id"] == "hongbin"
+    assert job["owner_display_name"] == "Hongbin"
+    assert "secret-token" not in str(job)
+
+
+def test_dedupe_key_is_isolated_by_owner():
+    settings = Settings()
+    payload = CaptureRequest(url="https://example.com/a", share_text="hello")
+    hongbin_job = build_job(payload, settings, owner=CaptureUser("hongbin", "Hongbin", "a"))
+    zhangyu_job = build_job(payload, settings, owner=CaptureUser("zhangyu", "Zhangyu", "b"))
+
+    assert build_dedupe_key(hongbin_job) != build_dedupe_key(zhangyu_job)

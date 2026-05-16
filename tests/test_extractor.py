@@ -13,6 +13,12 @@ def test_extract_url_from_rednote_share_text():
     assert extract_url_from_text(text) == "https://www.xiaohongshu.com/explore/abc123?xsec_token=tok"
 
 
+
+
+def test_extract_url_from_copied_xhslink_share_text():
+    text = "阿嬷主演官宣入行? 我记得南枝好像在路演的时候说过要... http://xhslink.com/o/85VkKb2G75I \n複製後開啟小紅書查看筆記"
+    assert extract_url_from_text(text) == "http://xhslink.com/o/85VkKb2G75I"
+
 def test_extract_url_returns_none_for_empty_text():
     assert extract_url_from_text(None) is None
     assert extract_url_from_text("no link") is None

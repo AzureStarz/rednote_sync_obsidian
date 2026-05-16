@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from scripts.sync_raw_vault import build_remote_prune_command, build_rsync_command, verify_local_vault
+from scripts.sync_raw_vault import build_remote_prune_command, build_rsync_command, owner_remote_root, verify_local_vault
 
 
 def test_build_rsync_command_defaults_to_non_destructive_sync():
@@ -34,6 +34,28 @@ def test_build_rsync_command_supports_dry_run_prune_and_port():
     assert "--delete" in cmd
     assert ["-e", "ssh -p 2222"] == cmd[cmd.index("-e") : cmd.index("-e") + 2]
     assert "--info=stats2,progress2" in cmd
+
+
+def test_build_remote_prune_command_can_target_one_owner():
+    cmd = build_remote_prune_command(
+        server="user@example.com",
+        remote_root="/data/rednote_raw",
+        days=30,
+        owner="zhangyu",
+    )
+
+    assert "/data/rednote_raw/users/zhangyu" in cmd
+
+
+def test_build_rsync_command_can_sync_one_owner():
+    cmd = build_rsync_command(
+        server="user@example.com",
+        remote_root="/data/rednote_raw",
+        owner="hongbin",
+        local_vault="/tmp/raw",
+    )
+
+    assert cmd[-2] == "user@example.com:/data/rednote_raw/users/hongbin/"
 
 
 def test_verify_local_vault_checks_manifest_hashes(tmp_path):
@@ -103,3 +125,13 @@ def test_build_remote_prune_command_uses_ssh_and_dry_run():
     assert "--days" in cmd
     assert "30" in cmd
     assert "--dry-run" in cmd
+
+
+def test_owner_remote_root_rejects_path_traversal():
+    assert owner_remote_root("/data/rednote_raw", "zhangyu") == "/data/rednote_raw/users/zhangyu"
+    try:
+        owner_remote_root("/data/rednote_raw", "../zhangyu")
+    except ValueError as exc:
+        assert "owner must match" in str(exc)
+    else:
+        raise AssertionError("path-like owner should be rejected")

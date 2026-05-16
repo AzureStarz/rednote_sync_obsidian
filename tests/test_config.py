@@ -18,6 +18,8 @@ def disable_dotenv(monkeypatch):
         "DEEPSEEK_BASE_URL",
         "RAW_STORAGE_ROOT",
         "CRAWL_COOKIE",
+        "CAPTURE_USERS_FILE",
+        "CAPTURE_TOKEN",
     ]:
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
@@ -59,3 +61,18 @@ def test_worker_requires_raw_storage_root():
         assert "RAW_STORAGE_ROOT" in str(exc)
     else:
         raise AssertionError("require_worker should reject missing RAW_STORAGE_ROOT")
+
+
+def test_api_accepts_capture_users_file_without_single_token():
+    settings = Settings(capture_users_file="/tmp/capture_users.json", capture_token="", redis_url="redis://test")
+    settings.require_api()
+
+
+def test_api_requires_some_token_source():
+    settings = Settings(capture_users_file="", capture_token="", redis_url="redis://test")
+    try:
+        settings.require_api()
+    except RuntimeError as exc:
+        assert "CAPTURE_USERS_FILE or CAPTURE_TOKEN" in str(exc)
+    else:
+        raise AssertionError("require_api should reject missing token sources")

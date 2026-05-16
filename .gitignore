@@ -29,6 +29,8 @@ dist/
 *.crt
 *.p12
 *.p8
+*.shortcut
+*.shortcuts
 secrets/
 
 # Raw capture data and local Obsidian vault copies

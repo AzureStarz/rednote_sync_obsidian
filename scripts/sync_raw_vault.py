@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+OWNER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 
 
 @dataclass(frozen=True)
@@ -27,12 +30,14 @@ def build_rsync_command(
     server: str,
     remote_root: str,
     local_vault: str,
+    owner: str | None = None,
     ssh_port: int | None = None,
     dry_run: bool = False,
     prune: bool = False,
     verbose: bool = False,
 ) -> list[str]:
-    remote = f"{server}:{remote_root.rstrip('/')}/"
+    effective_remote_root = owner_remote_root(remote_root, owner)
+    remote = f"{server}:{effective_remote_root.rstrip('/')}/"
     local = str(Path(local_vault).expanduser()) + "/"
     cmd = [
         "rsync",
@@ -56,6 +61,19 @@ def build_rsync_command(
         cmd.extend(["-e", f"ssh -p {ssh_port}"])
     cmd.extend([remote, local])
     return cmd
+
+
+def validate_owner_id(owner: str) -> str:
+    clean = owner.strip()
+    if not OWNER_ID_RE.fullmatch(clean):
+        raise ValueError("owner must match ^[a-z0-9][a-z0-9_-]{0,62}$")
+    return clean
+
+
+def owner_remote_root(remote_root: str, owner: str | None) -> str:
+    if not owner:
+        return remote_root
+    return f"{remote_root.rstrip('/')}/users/{validate_owner_id(owner)}"
 
 
 def _sha256_file(path: Path) -> str:
@@ -183,24 +201,43 @@ print(json.dumps({"root": str(root), "cache_days": args.days, "cutoff_exclusive"
 '''
 
 
-def build_remote_prune_command(*, server: str, remote_root: str, days: int, ssh_port: int | None = None, dry_run: bool = False, remote_sudo: bool = False) -> list[str]:
+def build_remote_prune_command(
+    *,
+    server: str,
+    remote_root: str,
+    days: int,
+    owner: str | None = None,
+    ssh_port: int | None = None,
+    dry_run: bool = False,
+    remote_sudo: bool = False,
+) -> list[str]:
     cmd = ["ssh"]
     if ssh_port:
         cmd.extend(["-p", str(ssh_port)])
     cmd.append(server)
     if remote_sudo:
         cmd.append("sudo")
-    cmd.extend(["python3", "-", "--root", remote_root, "--days", str(days)])
+    cmd.extend(["python3", "-", "--root", owner_remote_root(remote_root, owner), "--days", str(days)])
     if dry_run:
         cmd.append("--dry-run")
     return cmd
 
 
-def run_remote_prune(*, server: str, remote_root: str, days: int, ssh_port: int | None = None, dry_run: bool = False, remote_sudo: bool = False) -> int:
+def run_remote_prune(
+    *,
+    server: str,
+    remote_root: str,
+    days: int,
+    owner: str | None = None,
+    ssh_port: int | None = None,
+    dry_run: bool = False,
+    remote_sudo: bool = False,
+) -> int:
     cmd = build_remote_prune_command(
         server=server,
         remote_root=remote_root,
         days=days,
+        owner=owner,
         ssh_port=ssh_port,
         dry_run=dry_run,
         remote_sudo=remote_sudo,
@@ -215,6 +252,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--server", required=True, help="SSH target, for example user@example.com")
     parser.add_argument("--remote-root", default="/data/rednote_raw", help="Server host-visible raw storage root")
+    parser.add_argument(
+        "--owner",
+        default=None,
+        help="Optional owner id to sync, for example hongbin or zhangyu. Syncs remote-root/users/<owner>/ into the local vault.",
+    )
     parser.add_argument(
         "--local-vault",
         default="~/Documents/raw_rednote_post_vault",
@@ -241,6 +283,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    try:
+        owner = validate_owner_id(args.owner) if args.owner else None
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
     local_vault = Path(args.local_vault).expanduser()
     if not args.dry_run:
         local_vault.mkdir(parents=True, exist_ok=True)
@@ -252,6 +300,7 @@ def main() -> int:
         server=args.server,
         remote_root=args.remote_root,
         local_vault=str(local_vault),
+        owner=owner,
         ssh_port=args.ssh_port,
         dry_run=args.dry_run,
         prune=args.prune,
@@ -286,6 +335,7 @@ def main() -> int:
             server=args.server,
             remote_root=args.remote_root,
             days=args.remote_cache_days,
+            owner=owner,
             ssh_port=args.ssh_port,
             dry_run=args.dry_run,
             remote_sudo=args.remote_prune_sudo,

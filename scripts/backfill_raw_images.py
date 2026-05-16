@@ -270,12 +270,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def discover_bundles(root: str | Path) -> list[Path]:
+    root_path = Path(root)
+    bundles = list(root_path.glob("users/*/posts/*/*/*/*"))
+    bundles.extend(root_path.glob("posts/*/*/*/*"))  # legacy pre-user-namespace layout
+    return sorted(path for path in bundles if path.is_dir())
+
+
 def main() -> int:
     args = parse_args()
     settings = Settings.from_env()
     if args.root:
         settings = Settings(**{**settings.__dict__, "raw_storage_root": args.root})
-    bundles = [Path(item) for item in args.bundle] if args.bundle else sorted(Path(settings.raw_storage_root).glob("posts/*/*/*/*"))
+    bundles = [Path(item) for item in args.bundle] if args.bundle else discover_bundles(settings.raw_storage_root)
     for bundle in bundles:
         result = backfill_bundle(
             bundle,

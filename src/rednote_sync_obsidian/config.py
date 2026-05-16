@@ -92,6 +92,7 @@ def _default_model(provider: LLMProvider, api_style: LLMApiStyle) -> str:
 class Settings:
     # API / queue
     capture_token: str = ""
+    capture_users_file: str = ""
     redis_url: str = "redis://redis:6379/0"
     queue_name: str = "xhs_capture_queue"
     failed_queue_name: str = "xhs_capture_failed"
@@ -165,6 +166,7 @@ class Settings:
 
         return cls(
             capture_token=os.getenv("CAPTURE_TOKEN", ""),
+            capture_users_file=os.getenv("CAPTURE_USERS_FILE", ""),
             redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0"),
             queue_name=os.getenv("QUEUE_NAME", "xhs_capture_queue"),
             failed_queue_name=os.getenv("FAILED_QUEUE_NAME", "xhs_capture_failed"),
@@ -214,8 +216,8 @@ class Settings:
 
     def require_api(self) -> None:
         missing = []
-        if not self.capture_token:
-            missing.append("CAPTURE_TOKEN")
+        if not self.capture_users_file and not self.capture_token:
+            missing.append("CAPTURE_USERS_FILE or CAPTURE_TOKEN")
         if not self.redis_url:
             missing.append("REDIS_URL")
         if missing:
