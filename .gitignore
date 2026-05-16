@@ -1,0 +1,72 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments / local package metadata
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+build/
+dist/
+
+# Secrets and machine-local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.p8
+secrets/
+
+# Raw capture data and local Obsidian vault copies
+# These may contain private HTML, images, videos, cookies-derived access results, and large files.
+data/
+raw_rednote_post_vault/
+rednote_raw/
+*.mp4
+*.mov
+*.m4v
+*.webm
+
+# Logs / runtime state
+*.log
+logs/
+*.pid
+*.sock
+
+# Docker / compose local overrides
+.docker/
+docker-compose.override.yml
+compose.override.yml
+
+# OS/editor files
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OMX/OMC local runtime state is machine-specific
+.omx/
+.omc/
+
+# Misc local scratch
+.tmp/
+tmp/
+.cache/

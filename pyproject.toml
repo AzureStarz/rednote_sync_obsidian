@@ -1,0 +1,31 @@
+[project]
+name = "rednote-sync-obsidian"
+version = "0.1.0"
+description = "Capture raw Rednote/Xiaohongshu posts into a server vault and sync them into Obsidian."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "redis>=5.0.0",
+  "python-dotenv>=1.0.0",
+  "httpx>=0.27.0",
+  "beautifulsoup4>=4.12.0",
+  "pydantic>=2.8.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+llm = [
+  "openai>=2.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=69.0.0"]
+build-backend = "setuptools.build_meta"
