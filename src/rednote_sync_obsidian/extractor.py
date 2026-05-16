@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 from dataclasses import dataclass
 from html import unescape
 from typing import Iterable
@@ -211,6 +212,35 @@ def _meta_contents(soup: BeautifulSoup, selectors: Iterable[dict[str, str]]) -> 
     return values
 
 
+def _decode_json_string(value: str) -> str:
+    try:
+        decoded = json.loads(f'"{value}"')
+        return str(decoded).strip()
+    except Exception:
+        return unescape(value).replace("\\u002F", "/").replace("\\/", "/").strip()
+
+
+def _extract_xhs_author(html: str) -> str:
+    """Extract Rednote note author from embedded SSR state.
+
+    Rednote often does not expose the note author through standard
+    `<meta name="author">`; it stores the note owner inside script state as
+    `note.user.nickname`.
+    """
+
+    patterns = [
+        re.compile(r'"note"\s*:\s*\{.*?"user"\s*:\s*\{[^{}]*?"nickname"\s*:\s*"((?:\\.|[^"\\]){1,160})"', re.DOTALL),
+        re.compile(r'"user"\s*:\s*\{[^{}]*?"nickname"\s*:\s*"((?:\\.|[^"\\]){1,160})"', re.DOTALL),
+    ]
+    for pattern in patterns:
+        match = pattern.search(html or "")
+        if match:
+            author = _decode_json_string(match.group(1))
+            if author:
+                return author[:120]
+    return ""
+
+
 def extract_page_metadata(html: str, *, base_url: str | None = None) -> dict[str, str]:
     soup = BeautifulSoup(html or "", "html.parser")
     title = ""
@@ -226,7 +256,7 @@ def extract_page_metadata(html: str, *, base_url: str | None = None) -> dict[str
             {"name": "twitter:description"},
         ],
     )
-    author = _first_meta_content(soup, [{"name": "author"}, {"property": "article:author"}])
+    author = _first_meta_content(soup, [{"name": "author"}, {"property": "article:author"}]) or _extract_xhs_author(html or "")
     canonical = ""
     canonical_tag = soup.find("link", attrs={"rel": "canonical"})
     if canonical_tag and canonical_tag.get("href"):

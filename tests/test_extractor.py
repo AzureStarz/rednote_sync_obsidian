@@ -74,6 +74,22 @@ def test_extract_xhs_name_meta_and_escaped_cdn_images():
     ]
 
 
+def test_extract_xhs_author_from_embedded_note_user():
+    html = """
+    <html><head><meta name="og:title" content="标题"></head>
+    <script>
+      window.__INITIAL_STATE__ = {"noteDetailMap":{"abc":{"note":{
+        "noteId":"abc",
+        "user":{"userId":"u1","nickname":"大模型幻想家(日更版)","avatar":"https:\\u002F\\u002Fexample.com\\u002Fa.jpg"}
+      }}}};
+    </script></html>
+    """
+
+    metadata = extract_page_metadata(html)
+
+    assert metadata["author"] == "大模型幻想家(日更版)"
+
+
 def test_extract_xhs_skips_preview_and_avatar_variants():
     html = """
     <meta name="og:image" content="http://sns-webpic-qc.xhscdn.com/a/full!nd_dft_wgth_jpg_3">

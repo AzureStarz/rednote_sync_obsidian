@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from rednote_sync_obsidian.config import Settings  # noqa: E402
-from rednote_sync_obsidian.extractor import download_image, download_video, extract_image_candidates, extract_video_candidates  # noqa: E402
+from rednote_sync_obsidian.extractor import download_image, download_video, extract_image_candidates, extract_page_metadata, extract_video_candidates  # noqa: E402
 from rednote_sync_obsidian.raw_storage import build_raw_index_markdown, extension_for_image, extension_for_video, sha256_bytes  # noqa: E402
 
 
@@ -63,6 +63,7 @@ def backfill_bundle(
     request = json.loads(request_path.read_text()) if request_path.exists() else {"job_id": manifest.get("job_id")}
     html = html_path.read_text(errors="replace")
     base_url = manifest.get("final_url") or manifest.get("source_url")
+    manifest["page"] = extract_page_metadata(html, base_url=base_url)
     candidates = extract_image_candidates(
         html,
         base_url=base_url,
